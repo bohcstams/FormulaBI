@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: formulabi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: formulabi
+      POSTGRES_PASSWORD: formulabi
+      POSTGRES_DB: formulabi
+    ports:
+      - "5432:5432"
+    volumes:
+      - formulabi_pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U formulabi -d formulabi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  formulabi_pgdata:
