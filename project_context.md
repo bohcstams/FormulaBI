@@ -1,4 +1,4 @@
-# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
+﻿# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
 
 ## 1. Architektúra és Célok
 - **Cél:** Teljes életciklusú BI rendszer Formula–1 adatokkal, megajánlott jegy célkitűzéssel.
@@ -114,17 +114,25 @@ A `MRData.total` mező alapján ellenőrzött első elérhető szezonok:
 
 A szezononkénti naptár egy kérésben elfér (legfeljebb ~24 futam), lapozás nem kell.
 
+**`etl/job_load_season_dims.kjb`**: pilóták és csapatok betöltése szezononként a staging rétegbe (1996-tól).
+1. `tr_list_seasons.ktr` (paraméter: `ENDPOINT`, alapértelmezett `races`): a `stg.jolpica_${ENDPOINT}` táblából hiányzó szezonok listája.
+2. `tr_load_endpoint_season.ktr` (paraméterek: `SEASON`, `ENDPOINT`, alapértelmezett `drivers`): a `tr_load_races_season` általánosított változata. URL: `https://api.jolpi.ca/ergast/f1/${SEASON}/${ENDPOINT}.json?limit=100`; a Table Output a céltáblát a `target_table` mezőből (`jolpica_${ENDPOINT}`) veszi.
+3. A job sorrendje: Start → List seasons (drivers) → Download drivers → List seasons (constructors) → Download constructors → Success. Az `ENDPOINT` a bejegyzések **Value** oszlopában van megadva (nem a *Stream column name* oszlopban); a Download bejegyzéseknél a *Copy previous results to parameters* be van kapcsolva.
+A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert a `stg.jolpica_races` payload tartalmazza a pályák adatait is, így a `jolpica_circuits` végpont sem szükséges.
+
 ### Jelenlegi állapot (2026-10-13)
 - A docker konténer és a séma működik.
 - A `job_load_races` lefutott: `stg.jolpica_races` 31 sort tartalmaz (1996–2026, szezononként 1).
+- A `job_load_season_dims` lefutott: `stg.jolpica_drivers` és `stg.jolpica_constructors` 31-31 sort tartalmaz.
 - Az `etl.run_log` még nincs használatban az ETL jobokban.
-- Még nincs betöltve: `stg.jolpica_*` többi tábla (eredmények, időmérő, körök, bokszkiállások, pilóták, csapatok, pályák, állások) és az összes `stg.openf1_*` tábla.
+- Még nincs betöltve: `stg.jolpica_*` többi tábla (eredmények, időmérő, körök, bokszkiállások, állások) és az összes `stg.openf1_*` tábla.
 - Még nincs elkészítve: a staging → dwh SQL transzformáció (`dim_season`, `dim_circuit`, `dim_race` az első), a dwh táblák üresek.
 - A Power BI riport még nem készült el.
 
 ### Következő lépések
 1. Staging → dwh SQL a naptárból: `dim_season`, `dim_circuit`, `dim_race`.
-2. Az ugyanilyen mintájú jobok a többi Jolpica végpontra (pilóták, csapatok, eredmények, időmérő, bokszkiállások; köridők lapozással, `limit=100`).
+2. Staging → dwh SQL a pilótákból és csapatokból: `dim_driver`, `dim_constructor` (franchise/alias később).
+   Az ugyanilyen mintájú (ENDPOINT-paraméteres) jobok a többi Jolpica végpontra (eredmények, időmérő, bokszkiállások; köridők lapozással, `limit=100`).
 3. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
 4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
 5. Power BI riport.

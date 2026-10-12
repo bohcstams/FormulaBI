@@ -13,3 +13,8 @@ A mai nap folyamán az első nagyon egyszerű ETL jobot készítettem el a Penta
  - Az egyes szezonok során rendezett futamok adatainak feltöltése
 
 A job során ezek az adatok az stg.jolpica_races táblába kerülnek be.
+
+## 2026. október 13.
+
+Elkészítettem a második ETL jobot (job_load_season_dims), amely a pilóták és a csapatok szezononkénti adatait tölti be. Az első jobhoz képest az a újdonság, hogy a végpont paraméterezett (ENDPOINT): a tr_list_seasons és az új tr_load_endpoint_season transform ugyanazt a logikát használja a drivers és a constructors végpontra, a Table Output pedig a céltáblát mezőből (target_table) veszi. A job lefutott, az stg.jolpica_drivers és az stg.jolpica_constructors tábla is 31-31 sort tartalmaz (1996-2026). A futamhétvégék adatai már az stg.jolpica_races táblában voltak, ezért ahhoz nem kellett új betöltés.
+
