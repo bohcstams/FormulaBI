@@ -10,6 +10,6 @@ Ennek érdekében létrehoztam egy .sql scriptet is, amelynek segítségével in
 
 A mai nap folyamán az első nagyon egyszerű ETL jobot készítettem el a Pentaho segítségével. Ebben két transform kapott helyet:
  - A szezonok listájának feltöltése (évszámokkal)
- - Az egyes szezonok során rendezett futamok számának feltöltése
+ - Az egyes szezonok során rendezett futamok adatainak feltöltése
 
 A job során ezek az adatok az stg.jolpica_races táblába kerülnek be.

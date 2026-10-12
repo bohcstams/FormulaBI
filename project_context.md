@@ -95,3 +95,36 @@ A `MRData.total` mező alapján ellenőrzött első elérhető szezonok:
   - `stg` séma: végpontonként egy nyers `jsonb` tábla (`jolpica_*`, `openf1_*`).
   - `dwh` séma: `dim_driver`, `dim_franchise`, `dim_constructor`, `dim_constructor_alias`, `dim_circuit`, `dim_season`, `dim_race`, `dim_weather`; `fact_race_results` (verziózott: `is_current`, `snapshot_date`), `fact_qualifying`, `fact_lap_times`, `fact_pit_stops`.
 - **Következő lépések:** Pentaho extrakciós jobok (staging betöltés) → SQL transzformációk staging → dwh → Power BI.
+
+## 9. ETL jobok (Pentaho) és a projekt jelenlegi állapota
+
+### Fájlok
+- `db/docker-compose.yml`: PostgreSQL 16 konténer (`formulabi-postgres`, port 5432, adatbázis/felhasználó/jelszó: `formulabi`).
+- `db/init/01_schema.sql`: `etl`, `stg`, `dwh` sémák (lásd 8. fejezet).
+- `etl/` mappa: a Pentaho (PDI/Spoon) fájlok; `progress.md`: haladási napló.
+
+### Pentaho beállítások
+- PostgreSQL JDBC `.jar` a `data-integration/lib/` mappában.
+- Megosztott kapcsolat: `formulabi_pg` (localhost:5432, `formulabi`), az **Options** fülön `stringtype = unspecified`, hogy a Table Output szöveget tudjon `jsonb` oszlopba írni.
+
+### Elkészült jobok
+**`etl/job_load_races.kjb`**: a futamnaptár betöltése a staging rétegbe, 1996-tól az aktuális évig.
+1. `tr_list_seasons.ktr`: Table Input (`generate_series(1996, aktuális év)`, a már betöltött `stg.jolpica_races` szezonok kihagyásával) → Copy rows to result. Így a job újraindítható.
+2. `tr_load_races_season.ktr` (paraméter: `SEASON`), szezononként egyszer fut (*Execute for every input row*): Get Variables (`season`, `url`) → HTTP Client (`https://api.jolpi.ca/ergast/f1/${SEASON}/races.json?limit=100`, eredmény: `payload`, státusz: `status_code`) → Filter rows (`status_code = 200`; hamis ág: Abort) → Delay row (1 mp, rate limit) → Table Output (`stg.jolpica_races`: `season`, `source_url`, `payload`).
+
+A szezononkénti naptár egy kérésben elfér (legfeljebb ~24 futam), lapozás nem kell.
+
+### Jelenlegi állapot (2026-10-13)
+- A docker konténer és a séma működik.
+- A `job_load_races` lefutott: `stg.jolpica_races` 31 sort tartalmaz (1996–2026, szezononként 1).
+- Az `etl.run_log` még nincs használatban az ETL jobokban.
+- Még nincs betöltve: `stg.jolpica_*` többi tábla (eredmények, időmérő, körök, bokszkiállások, pilóták, csapatok, pályák, állások) és az összes `stg.openf1_*` tábla.
+- Még nincs elkészítve: a staging → dwh SQL transzformáció (`dim_season`, `dim_circuit`, `dim_race` az első), a dwh táblák üresek.
+- A Power BI riport még nem készült el.
+
+### Következő lépések
+1. Staging → dwh SQL a naptárból: `dim_season`, `dim_circuit`, `dim_race`.
+2. Az ugyanilyen mintájú jobok a többi Jolpica végpontra (pilóták, csapatok, eredmények, időmérő, bokszkiállások; köridők lapozással, `limit=100`).
+3. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
+4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
+5. Power BI riport.
