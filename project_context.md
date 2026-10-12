@@ -1,4 +1,4 @@
-﻿# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
+# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
 
 ## 1. Architektúra és Célok
 - **Cél:** Teljes életciklusú BI rendszer Formula–1 adatokkal, megajánlott jegy célkitűzéssel.
@@ -126,13 +126,12 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
 - A `job_load_season_dims` lefutott: `stg.jolpica_drivers` és `stg.jolpica_constructors` 31-31 sort tartalmaz.
 - Az `etl.run_log` még nincs használatban az ETL jobokban.
 - Még nincs betöltve: `stg.jolpica_*` többi tábla (eredmények, időmérő, körök, bokszkiállások, állások) és az összes `stg.openf1_*` tábla.
-- Még nincs elkészítve: a staging → dwh SQL transzformáció (`dim_season`, `dim_circuit`, `dim_race` az első), a dwh táblák üresek.
+- A dimenziók betöltve a stagingből (`db/transform/`: `dim_season.sql`, `dim_circuit.sql`, `dim_race.sql`, `dim_driver.sql`, `dim_constructor.sql`; sorrend: season → circuit → race, a driver és a constructor független). Idempotensek (`ON CONFLICT`), a staging append-only, ezért mindig a legutolsó sort (`stg_id DESC`) veszik. Még üresek: `dim_franchise`, `dim_constructor_alias`, `dim_weather` és a ténytáblák.
 - A Power BI riport még nem készült el.
 
 ### Következő lépések
-1. Staging → dwh SQL a naptárból: `dim_season`, `dim_circuit`, `dim_race`.
-2. Staging → dwh SQL a pilótákból és csapatokból: `dim_driver`, `dim_constructor` (franchise/alias később).
-   Az ugyanilyen mintájú (ENDPOINT-paraméteres) jobok a többi Jolpica végpontra (eredmények, időmérő, bokszkiállások; köridők lapozással, `limit=100`).
+1. A dimenziókból hátra van: `dim_franchise`/`dim_constructor_alias` feltöltése, a `dim_season` bajnok oszlopai (a bajnoki állásokból), `dim_circuit.openf1_circuit_key`.
+2. Az ugyanilyen mintájú (ENDPOINT-paraméteres) jobok a többi Jolpica végpontra (eredmények, időmérő, bokszkiállások, köridők lapozással, `limit=100`). Ezeket fordulónként kell lekérdezni (`SEASON` + `ROUND`).
 3. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
 4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
 5. Power BI riport.
