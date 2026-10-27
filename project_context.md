@@ -139,6 +139,11 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
 - `job_load_laps_round.kjb` (paraméterek: `SEASON`, `ROUND`, `DELAY_SECONDS`): SQL (`DELETE FROM stg.jolpica_laps` az adott fordulóra, a félbemaradt betöltések törlésére) → Laps total → Laps pages (*Execute for every input row*, a `SEASON`, `ROUND`, `TOTAL` a result sorból) → Success.
 - `job_load_laps.kjb` (paraméter: `DELAY_SECONDS`): `tr_list_rounds` (`ENDPOINT = laps`, `FIRST_SEASON = 2023`) → `job_load_laps_round` fordulónként → Success.
 
+**OpenF1 adatok betöltése (`etl/job_load_openf1.kjb`)**: a 2023-tól elérhető OpenF1 adatok (`sessions`, `weather`, `race_control`, `stints`, `drivers`) betöltése a staging rétegbe és a `dim_race` / `dim_circuit` OpenF1 azonosítóinak feltöltése (`DELAY_SECONDS = 3`).
+- `tr_list_openf1_seasons.ktr` → `tr_load_openf1_sessions.ktr`: a `dwh.dim_race` alapján listázza azokat a 2023 utáni szezonokat, ahol van lezajlott futam `openf1_session_key` nélkül, majd letölti a `https://api.openf1.org/v1/sessions?year=${SEASON}&session_name=Race` végpontot az `stg.openf1_sessions` táblába.
+- `db/transform/dim_openf1_session.sql`: az `stg.openf1_sessions` JSON tömbjéből (`session_name = 'Race'`) kitölti a `dwh.dim_race.openf1_session_key` oszlopot (`abs(race_date - session_date) <= 1`, hogy a helyi idő szerint szombat esti Las Vegas-i futamok UTC dátuma is illeszkedjen), valamint a `dwh.dim_circuit.openf1_circuit_key` oszlopot.
+- `tr_list_openf1_sessions.ktr` (paraméter: `ENDPOINT`) → `tr_load_openf1_endpoint.ktr` (paraméterek: `SEASON`, `ROUND`, `SESSION_KEY`, `ENDPOINT`, `DELAY_SECONDS`): a lezajlott, `openf1_session_key`-jel rendelkező futamokra letölti a `https://api.openf1.org/v1/${ENDPOINT}?session_key=${SESSION_KEY}` végpontot az `stg.openf1_${ENDPOINT}` táblába (`weather`, `race_control`, `stints`, `drivers`). A `Select values` lépés `#` formátummaszkot állít be az egész számokra (`season`, `round`, `session_key`), hogy a paraméterátadásnál ne kerüljön szóköz vagy ezreselválasztó az URL-be.
+
 ### Jelenlegi állapot (2026-10-27)
 - A docker konténer és a séma működik.
 - A `job_load_races` lefutott: `stg.jolpica_races` 31 sort tartalmaz (1996–2026, szezononként 1).
@@ -148,15 +153,18 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
   - `stg.jolpica_qualifying`: 586 sor (586 forduló)
   - `stg.jolpica_pitstops`: 328 sor (328 forduló, 2011–2026)
   - `stg.jolpica_laps`: 597 sor (586 forduló, 1996–2026: 585 forduló 1-1 sorban a CSV dumpból + a 2026-os 18. forduló 12 lapozott sorban az API-ról)
+- A `job_load_openf1` lefutott, így az összes `stg.openf1_*` tábla és az OpenF1 dimenzió-kapcsolatok is teljesek (2023–2026, a 2026-os 18. fordulóig bezárólag 88 lezajlott futamra):
+  - `stg.openf1_sessions`: 4 sor (2023–2026)
+  - `stg.openf1_weather`, `stg.openf1_race_control`, `stg.openf1_stints`, `stg.openf1_drivers`: egyenként 88 sor (88 futam, 0 üres payload)
+  - `dwh.dim_race.openf1_session_key`: mind a 93 futamhoz (2023–2026) kitöltve; `dwh.dim_circuit.openf1_circuit_key`: 26 pályához kitöltve
 - Az `etl.run_log` még nincs használatban az ETL jobokban.
-- Még nincs betöltve: a bajnoki állások (`driverstandings`, `constructorstandings`) és az összes `stg.openf1_*` tábla.
-- A dimenziók betöltve a stagingből (`db/transform/`: `dim_season.sql`, `dim_circuit.sql`, `dim_race.sql`, `dim_driver.sql`, `dim_constructor.sql`; sorrend: season → circuit → race, a driver és a constructor független). Idempotensek (`ON CONFLICT`), a staging append-only, ezért mindig a legutolsó sort (`stg_id DESC`) veszik. Még üresek: `dim_franchise`, `dim_constructor_alias`, `dim_weather` és a ténytáblák.
+- Még nincs betöltve a stagingbe: a bajnoki állások (`driverstandings`, `constructorstandings`).
+- A dimenziók betöltve a stagingből (`db/transform/`: `dim_season.sql`, `dim_circuit.sql`, `dim_race.sql`, `dim_driver.sql`, `dim_constructor.sql`, `dim_openf1_session.sql`). Idempotensek (`ON CONFLICT` / `IS DISTINCT FROM`), a staging append-only, ezért mindig a legutolsó sort (`stg_id DESC`) veszik. Még üresek: `dim_franchise`, `dim_constructor_alias`, `dim_weather` és a ténytáblák.
 - A Power BI riport még nem készült el.
 
 ### Következő lépések
-1. A dimenziókból hátra van: `dim_franchise`/`dim_constructor_alias` feltöltése, a `dim_season` bajnok oszlopai (a bajnoki állásokból), `dim_circuit.openf1_circuit_key`.
-2. A bajnoki állások betöltése (`driverstandings`, `constructorstandings`; a céltábla neve eltér az endpointtól, ezért külön `TABLE` paraméter kell, vagy a CSV dumpból is kinyerhető).
-3. A Jolpica ténytáblák (`fact_race_results`, `fact_qualifying`, `fact_lap_times`, `fact_pit_stops`) SQL transzformációinak elkészítése és futtatása a már feltöltött `stg.jolpica_*` táblákból.
-4. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
-5. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
-6. Power BI riport.
+1. A dimenziókból hátra van: `dim_weather` feltöltése (`stg.openf1_weather`-ből), `dim_franchise`/`dim_constructor_alias` feltöltése, valamint a `dim_season` bajnok oszlopai (a bajnoki állásokból vagy a CSV dumpból).
+2. A bajnoki állások betöltése (`driverstandings`, `constructorstandings`; API-ról vagy a CSV dumpból).
+3. A ténytáblák (`fact_race_results`, `fact_qualifying`, `fact_lap_times`, `fact_pit_stops`) SQL transzformációinak elkészítése és futtatása a már feltöltött `stg.jolpica_*` és `stg.openf1_*` táblákból.
+4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
+5. Power BI riport.
