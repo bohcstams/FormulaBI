@@ -1,4 +1,4 @@
-﻿# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
+# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
 
 ## 1. Architektúra és Célok
 - **Cél:** Teljes életciklusú BI rendszer Formula–1 adatokkal, megajánlott jegy célkitűzéssel.
@@ -101,6 +101,9 @@ A `MRData.total` mező alapján ellenőrzött első elérhető szezonok:
 ### Fájlok
 - `db/docker-compose.yml`: PostgreSQL 16 konténer (`formulabi-postgres`, port 5432, adatbázis/felhasználó/jelszó: `formulabi`).
 - `db/init/01_schema.sql`: `etl`, `stg`, `dwh` sémák (lásd 8. fejezet).
+- `db/init/02_dump_schema.sql`: a Jolpica CSV adatbázis-dump nyers `stg.dump_*` táblái, a `stg.v_dump_race_entry` nézet és az `etl.format_duration` függvény.
+- `db/transform/`: staging → dimenzió SQL scriptek (`dim_*.sql`), valamint a dump táblákból API-formátumú JSONB sorokat építő `stg_from_dump.sql`.
+- `data/jolpica_dump/`: a letöltött és kicsomagolt Jolpica CSV dump (`jolpica-f1-csv.zip`, `formula_one_*.csv`).
 - `etl/` mappa: a Pentaho (PDI/Spoon) fájlok; `progress.md`: haladási napló.
 
 ### Pentaho beállítások
@@ -126,26 +129,34 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
 3. A job sorrendje: List (results, 1996-tól) → Download results → List (qualifying, 1996-tól) → Download qualifying → List (pitstops, 2011-től) → Download pitstops → Success. A Download bejegyzések *Execute for every input row* módban futnak, a `SEASON` és `ROUND` paramétereket a **Parameters** fülön a *Stream column name* oszlopból (`season`, `round`) kapják; a *Copy previous results to parameters* önmagában nem elég. A kapcsolatok feltételesek (*Follow when result is true*), hogy a hiba megállítsa a jobot.
 4. Rate limit: 429-es válasznál (Cloudflare 1015) a Filter rows lépés megszakítja a transzformációt; a következő futás ott folytatja, ahol abbamaradt. A megtalált órás limit kb. 500 kérés, ezért `DELAY_SECONDS = 8` (kb. 450 kérés/óra). A pitstops lekérdezés `limit=100` miatt egy forduló legfeljebb 100 kiállást tartalmazhat; ez eddig minden fordulónál elég volt.
 
-**Köridők (`etl/job_load_laps.kjb`)**: 2023-tól (a 2023 előtti köridők kimaradnak, ezt a Power BI elemzésekben jelezni kell). Egy forduló kb. 1000–1400 köridőt tartalmaz, ami több oldal (`limit=100`, `offset`), ezért két szint kellett. Az oldalszám a `limit` miatt a köridő-rekordokat számolja, nem a köröket, így egy kör két oldalra is eshet; a transzformáció során deduplikálni kell `(forduló, kör, pilóta)` alapján.
-- `tr_laps_total.ktr` (paraméterek: `SEASON`, `ROUND`, `DELAY_SECONDS`): `limit=1` kérés → Filter rows (200, különben Abort) → Delay row → JSON input (`$.MRData.total`) → Select values (`season`, `round`, `total`) → Copy rows to result.
+**Köridők és bokszkiállások tömeges backfillje dumpból (`etl/job_load_dump.kjb`)**: a Jolpica ingyenes (14 napos késleltetésű) CSV adatbázis-dumpjából tölti fel az `stg.jolpica_laps` és `stg.jolpica_pitstops` táblákat (1996-tól), így nem kell több ezer lapozott API kérést indítani.
+- Letölti és kicsomagolja a CSV dumpot a `data/jolpica_dump/` mappába, lefuttatja a `db/init/02_dump_schema.sql` scriptet, majd a `tr_load_dump_csv.ktr` transzformációval (`TRUNCATE` + `INSERT`) betölti a 9 szükséges CSV-t az `stg.dump_*` táblákba.
+- Végül a `db/transform/stg_from_dump.sql` a nyers dump táblákból az API-válaszokkal megegyező JSONB szerkezetű (`MRData.RaceTable.Races[0].Laps` / `PitStops`) sorokat épít (fordulónként 1 sort), kihagyva a már betöltött fordulókat (`WHERE NOT EXISTS`).
+
+**Köridők növekményes betöltése API-ról (`etl/job_load_laps.kjb`)**: a dumpból még hiányzó legfrissebb fordulók pótlására (2023-tól). Egy forduló kb. 1000–1400 köridőt tartalmaz, ami több oldal (`limit=100`, `offset`), ezért két szint kellett. Az oldalszám a `limit` miatt a köridő-rekordokat számolja, nem a köröket, így egy kör két oldalra is eshet; a transzformáció során deduplikálni kell `(forduló, kör, pilóta)` alapján.
+- `tr_laps_total.ktr` (paraméterek: `SEASON`, `ROUND`, `DELAY_SECONDS`): `limit=1` kérés → Filter rows (200, különben Abort) → Delay row → JSON input (`$.MRData.total`) → Select values (`season`, `round`, `total`; `#` formátummaszkkal, hogy a paraméterátadásnál ne legyen vezető szóköz/nulla) → Copy rows to result.
 - `tr_load_laps_pages.ktr` (paraméterek: `SEASON`, `ROUND`, `TOTAL`, `DELAY_SECONDS`): Table Input (`generate_series(0, TOTAL - 1, 100)` → oldalankénti URL) → HTTP client → Filter rows (200, különben Abort) → Delay row → Table Output (`stg.jolpica_laps`: `season`, `round`, `source_url`, `payload`).
 - `job_load_laps_round.kjb` (paraméterek: `SEASON`, `ROUND`, `DELAY_SECONDS`): SQL (`DELETE FROM stg.jolpica_laps` az adott fordulóra, a félbemaradt betöltések törlésére) → Laps total → Laps pages (*Execute for every input row*, a `SEASON`, `ROUND`, `TOTAL` a result sorból) → Success.
 - `job_load_laps.kjb` (paraméter: `DELAY_SECONDS`): `tr_list_rounds` (`ENDPOINT = laps`, `FIRST_SEASON = 2023`) → `job_load_laps_round` fordulónként → Success.
-- Átnézéssel ellenőrizve, de még nem futott le, mert a rate limit miatt a többi backfill befejezésére kell várni.
 
-### Jelenlegi állapot (2026-10-15)
+### Jelenlegi állapot (2026-10-27)
 - A docker konténer és a séma működik.
 - A `job_load_races` lefutott: `stg.jolpica_races` 31 sort tartalmaz (1996–2026, szezononként 1).
 - A `job_load_season_dims` lefutott: `stg.jolpica_drivers` és `stg.jolpica_constructors` 31-31 sort tartalmaz.
+- A `job_load_dump`, a `job_load_round_data` és a `job_load_laps` lefutott, így a fordulónkénti Jolpica staging táblák teljesek (1996–2026, a 2026-os 18. fordulóig bezárólag):
+  - `stg.jolpica_results`: 586 sor (586 forduló)
+  - `stg.jolpica_qualifying`: 586 sor (586 forduló)
+  - `stg.jolpica_pitstops`: 328 sor (328 forduló, 2011–2026)
+  - `stg.jolpica_laps`: 597 sor (586 forduló, 1996–2026: 585 forduló 1-1 sorban a CSV dumpból + a 2026-os 18. forduló 12 lapozott sorban az API-ról)
 - Az `etl.run_log` még nincs használatban az ETL jobokban.
-- A `job_load_round_data` fut (8 s késleltetéssel): `stg.jolpica_results`, `stg.jolpica_qualifying` (1996-tól) és `stg.jolpica_pitstops` (2011-től) töltése folyamatban; a 2025–2026-os tesztbetöltés rendben lefutott.
-- Még nincs betöltve: `stg.jolpica_laps` (a job elkészült, de még nem futott), a bajnoki állások és az összes `stg.openf1_*` tábla.
+- Még nincs betöltve: a bajnoki állások (`driverstandings`, `constructorstandings`) és az összes `stg.openf1_*` tábla.
 - A dimenziók betöltve a stagingből (`db/transform/`: `dim_season.sql`, `dim_circuit.sql`, `dim_race.sql`, `dim_driver.sql`, `dim_constructor.sql`; sorrend: season → circuit → race, a driver és a constructor független). Idempotensek (`ON CONFLICT`), a staging append-only, ezért mindig a legutolsó sort (`stg_id DESC`) veszik. Még üresek: `dim_franchise`, `dim_constructor_alias`, `dim_weather` és a ténytáblák.
 - A Power BI riport még nem készült el.
 
 ### Következő lépések
 1. A dimenziókból hátra van: `dim_franchise`/`dim_constructor_alias` feltöltése, a `dim_season` bajnok oszlopai (a bajnoki állásokból), `dim_circuit.openf1_circuit_key`.
-2. A `job_load_round_data` backfill befejezése, majd a `job_load_laps` első tesztje (pl. `FIRST_SEASON = 2025`, 1 forduló), végül a teljes 2023-tól induló köridő-betöltés (a rate limit miatt a két backfill nem futhat egyszerre). Hátra van még a bajnoki állások betöltése (`driverstandings`, `constructorstandings`; a céltábla neve eltér az endpointtól, ezért külön `TABLE` paraméter kell).
-3. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
-4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
-5. Power BI riport.
+2. A bajnoki állások betöltése (`driverstandings`, `constructorstandings`; a céltábla neve eltér az endpointtól, ezért külön `TABLE` paraméter kell, vagy a CSV dumpból is kinyerhető).
+3. A Jolpica ténytáblák (`fact_race_results`, `fact_qualifying`, `fact_lap_times`, `fact_pit_stops`) SQL transzformációinak elkészítése és futtatása a már feltöltött `stg.jolpica_*` táblákból.
+4. OpenF1 betöltés (2023-tól): `sessions` → `openf1_session_key` a `dim_race`-ben, majd `weather`, `race_control`, `stints`.
+5. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
+6. Power BI riport.

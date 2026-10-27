@@ -27,3 +27,15 @@ Elkészítettem a Jolpica fordulónkénti adatainak betöltését. Új a `tr_lis
 Az API a kéréseket korlátozza (429, Cloudflare 1015). Az órás limit kb. 500 kérés, ezért a `DELAY_SECONDS` értékét 8 másodpercre állítottam (kb. 450 kérés/óra). Az 1996-tól induló teljes betöltés (eredmények, időmérő, 2011-től a bokszkiállások) jelenleg fut.
 
 Ezzel párhuzamosan elkészítettem a köridők betöltését is (2023-tól): `tr_laps_total` (a forduló köridő-rekordjainak száma), `tr_load_laps_pages` (az oldalak letöltése `offset` szerint), `job_load_laps_round` (egy forduló, a félbemaradt betöltés törlésével) és `job_load_laps` (a hiányzó fordulók listája és a fordulónkénti futtatás). Ezek még nem futottak le, mert a rate limit miatt megvárom a többi betöltés végét.
+
+## 2026. október 27.
+
+A köridők és a bokszkiállások történeti feltöltésének felgyorsítására (az API rate limit megkerülésére) elkészült a Jolpica adatbázis-dump (CSV export) alapú betöltés:
+ - `db/init/02_dump_schema.sql`: létrehozza a CSV fájloknak megfelelő nyers `stg.dump_*` táblákat, a futambejegyzéseket összekapcsoló `stg.v_dump_race_entry` nézetet, valamint az időtartamokat az API formátumára alakító `etl.format_duration` függvényt.
+ - `etl/tr_load_dump_csv.ktr` és `etl/job_load_dump.kjb`: letölti és kicsomagolja a CSV dumpot a `data/jolpica_dump` mappába, majd betölti a szükséges 9 CSV fájlt az `stg.dump_*` táblákba, végül lefuttatja az SQL transzformációt.
+ - `db/transform/stg_from_dump.sql`: a dump táblákból az API válaszaival megegyező JSONB szerkezetű sorokat állít elő az `stg.jolpica_laps` és az `stg.jolpica_pitstops` táblákba (1996-tól), kihagyva a már betöltött fordulókat.
+
+A `db/transform/stg_from_dump.sql` scriptben egy felesleges záró zárójel javítása után a dump alapú betöltés sikeresen lefutott: az `stg.jolpica_laps` táblába 585 forduló (1996–2026), az `stg.jolpica_pitstops` táblába pedig a korábban API-ról betöltött 98 forduló mellé további 228 forduló került be.
+
+Ezután lefuttattam a `job_load_round_data` és a `job_load_laps` jobokat, hogy a 14 napos késleltetésű dumpból még hiányzó legfrissebb fordulók is bekerüljenek az API-ról. A `tr_laps_total` transzformációban az egész szám típusú mezők (`season`, `round`, `total`) formátumát `#`-re kellett állítani, mert üres formátummaszk mellett a Pentaho szóközzel és vezető nullákkal adta át a paramétereket az URL-be. A javítás után a `job_load_laps` is hibamentesen lefutott, és 12 lapozott sorban letöltötte a hiányzó 2026-os 18. forduló köridőit. Ezzel mind a négy Jolpica staging tábla (`jolpica_results`: 586 sor, `jolpica_qualifying`: 586 sor, `jolpica_pitstops`: 328 sor, `jolpica_laps`: 597 sor / 586 forduló) teljes.
+
