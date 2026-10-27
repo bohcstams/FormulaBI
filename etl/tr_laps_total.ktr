@@ -541,7 +541,7 @@
         <name>season</name>
         <variable>${SEASON}</variable>
         <type>Integer</type>
-        <format/>
+        <format>#</format>
         <currency/>
         <decimal/>
         <group/>
@@ -553,7 +553,7 @@
         <name>round</name>
         <variable>${ROUND}</variable>
         <type>Integer</type>
-        <format/>
+        <format>#</format>
         <currency/>
         <decimal/>
         <group/>
@@ -767,7 +767,7 @@
         <name>total</name>
         <path>$.MRData.total</path>
         <type>Integer</type>
-        <format/>
+        <format>#</format>
         <currency/>
         <decimal/>
         <group/>
