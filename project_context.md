@@ -101,8 +101,8 @@ A `MRData.total` mező alapján ellenőrzött első elérhető szezonok:
 ### Fájlok
 - `db/docker-compose.yml`: PostgreSQL 16 konténer (`formulabi-postgres`, port 5432, adatbázis/felhasználó/jelszó: `formulabi`).
 - `db/init/01_schema.sql`: `etl`, `stg`, `dwh` sémák (lásd 8. fejezet).
-- `db/init/02_dump_schema.sql`: a Jolpica CSV adatbázis-dump nyers `stg.dump_*` táblái, a `stg.v_dump_race_entry` nézet és az `etl.format_duration` függvény.
-- `db/transform/`: staging → dimenzió SQL scriptek (`dim_*.sql`), valamint a dump táblákból API-formátumú JSONB sorokat építő `stg_from_dump.sql`.
+- `db/init/02_dump_schema.sql`: a Jolpica CSV adatbázis-dump nyers `stg.dump_*` táblái, a `stg.v_dump_race_entry` nézet, valamint az időtartamokat oda-vissza konvertáló `etl.format_duration` és `etl.parse_duration_sec` függvények.
+- `db/transform/`: staging → dimenzió (`dim_*.sql`) és staging → ténytábla (`fact_*.sql`) SQL scriptek, valamint a dump táblákból API-formátumú JSONB sorokat építő `stg_from_dump.sql`.
 - `data/jolpica_dump/`: a letöltött és kicsomagolt Jolpica CSV dump (`jolpica-f1-csv.zip`, `formula_one_*.csv`).
 - `etl/` mappa: a Pentaho (PDI/Spoon) fájlok; `progress.md`: haladási napló.
 
@@ -117,10 +117,10 @@ A `MRData.total` mező alapján ellenőrzött első elérhető szezonok:
 
 A szezononkénti naptár egy kérésben elfér (legfeljebb ~24 futam), lapozás nem kell.
 
-**`etl/job_load_season_dims.kjb`**: pilóták és csapatok betöltése szezononként a staging rétegbe (1996-tól).
-1. `tr_list_seasons.ktr` (paraméter: `ENDPOINT`, alapértelmezett `races`): a `stg.jolpica_${ENDPOINT}` táblából hiányzó szezonok listája.
-2. `tr_load_endpoint_season.ktr` (paraméterek: `SEASON`, `ENDPOINT`, alapértelmezett `drivers`): a `tr_load_races_season` általánosított változata. URL: `https://api.jolpi.ca/ergast/f1/${SEASON}/${ENDPOINT}.json?limit=100`; a Table Output a céltáblát a `target_table` mezőből (`jolpica_${ENDPOINT}`) veszi.
-3. A job sorrendje: Start → List seasons (drivers) → Download drivers → List seasons (constructors) → Download constructors → Success. Az `ENDPOINT` a bejegyzések **Value** oszlopában van megadva (nem a *Stream column name* oszlopban); a Download bejegyzéseknél a *Copy previous results to parameters* be van kapcsolva.
+**`etl/job_load_season_dims.kjb`**: pilóták, csapatok és bajnoki végeredmények (`driverstandings`, `constructorstandings`) betöltése szezononként a staging rétegbe (1996-tól).
+1. `tr_list_seasons.ktr` (paraméterek: `ENDPOINT`, `TARGET_TABLE`): az `stg.${TARGET_TABLE}` táblából hiányzó szezonok listája, `Select values` lépéssel (`#` formátummaszk a `season` mezőre).
+2. `tr_load_endpoint_season.ktr` (paraméterek: `SEASON`, `ENDPOINT`, `TARGET_TABLE`): a `tr_load_races_season` általánosított változata. URL: `https://api.jolpi.ca/ergast/f1/${SEASON}/${ENDPOINT}.json?limit=100`; a Table Output a céltáblát a `target_table` mezőből (`${TARGET_TABLE}`) veszi, mivel a bajnoki állásoknál az API végpont (`driverstandings`, `constructorstandings`) és a táblanév (`jolpica_driver_standings`, `jolpica_constructor_standings`) eltér egy aláhúzásjelben.
+3. A job sorrendje: Start → List/Download (drivers) → List/Download (constructors) → List/Download (driver standings) → List/Download (constructor standings) → Success.
 A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert a `stg.jolpica_races` payload tartalmazza a pályák adatait is, így a `jolpica_circuits` végpont sem szükséges.
 
 **`etl/job_load_round_data.kjb`**: az eredmények, az időmérő és a bokszkiállások betöltése fordulónként a staging rétegbe.
@@ -144,10 +144,14 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
 - `db/transform/dim_openf1_session.sql`: az `stg.openf1_sessions` JSON tömbjéből (`session_name = 'Race'`) kitölti a `dwh.dim_race.openf1_session_key` oszlopot (`abs(race_date - session_date) <= 1`, hogy a helyi idő szerint szombat esti Las Vegas-i futamok UTC dátuma is illeszkedjen), valamint a `dwh.dim_circuit.openf1_circuit_key` oszlopot.
 - `tr_list_openf1_sessions.ktr` (paraméter: `ENDPOINT`) → `tr_load_openf1_endpoint.ktr` (paraméterek: `SEASON`, `ROUND`, `SESSION_KEY`, `ENDPOINT`, `DELAY_SECONDS`): a lezajlott, `openf1_session_key`-jel rendelkező futamokra letölti a `https://api.openf1.org/v1/${ENDPOINT}?session_key=${SESSION_KEY}` végpontot az `stg.openf1_${ENDPOINT}` táblába (`weather`, `race_control`, `stints`, `drivers`). A `Select values` lépés `#` formátummaszkot állít be az egész számokra (`season`, `round`, `session_key`), hogy a paraméterátadásnál ne kerüljön szóköz vagy ezreselválasztó az URL-be.
 
-### Jelenlegi állapot (2026-10-27)
+**DWH dimenziók és ténytáblák betöltése (`etl/job_transform_dims.kjb`, `etl/job_transform_facts.kjb`)**: a staging táblákból idempotens SQL scriptekkel (`db/transform/*.sql`) tölti fel a teljes csillagsémát.
+- `job_transform_dims.kjb`: sorban lefuttatja a `dim_driver.sql`, `dim_constructor.sql`, `dim_franchise.sql` (`dim_franchise`, `dim_constructor.franchise_key` és `dim_constructor_alias` feltöltése sziget-algoritmussal és szponzornevekkel), `dim_season.sql` (a lezárt szezonok egyéni és konstruktőri világbajnokainak beállításával), `dim_circuit.sql`, `dim_race.sql`, `dim_openf1_session.sql` és `dim_weather.sql` scripteket.
+- `job_transform_facts.kjb`: sorban lefuttatja a `fact_qualifying.sql`, `fact_race_results.sql` (SCD Type 2 verziózással az `is_current` és `snapshot_date` mezőkön, valamint az OpenF1 időjárás és Safety Car adatokkal), `fact_pit_stops.sql` (a csapatot a `fact_race_results` táblából hozzákapcsolva) és `fact_lap_times.sql` (a lapozott API sorok deduplikálásával, Safety Car körök és pályahőmérséklet jelölésével) scripteket. Az időtartam-szövegeket az `etl.parse_duration_sec` függvény alakítja másodpercekké (`NUMERIC(8, 3)`).
+
+### Jelenlegi állapot (2026-11-03)
 - A docker konténer és a séma működik.
 - A `job_load_races` lefutott: `stg.jolpica_races` 31 sort tartalmaz (1996–2026, szezononként 1).
-- A `job_load_season_dims` lefutott: `stg.jolpica_drivers` és `stg.jolpica_constructors` 31-31 sort tartalmaz.
+- A `job_load_season_dims` lefutott: `stg.jolpica_drivers`, `stg.jolpica_constructors`, `stg.jolpica_driver_standings` és `stg.jolpica_constructor_standings` egyenként 31 sort tartalmaz (1996–2026).
 - A `job_load_dump`, a `job_load_round_data` és a `job_load_laps` lefutott, így a fordulónkénti Jolpica staging táblák teljesek (1996–2026, a 2026-os 18. fordulóig bezárólag):
   - `stg.jolpica_results`: 586 sor (586 forduló)
   - `stg.jolpica_qualifying`: 586 sor (586 forduló)
@@ -157,14 +161,10 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
   - `stg.openf1_sessions`: 4 sor (2023–2026)
   - `stg.openf1_weather`, `stg.openf1_race_control`, `stg.openf1_stints`, `stg.openf1_drivers`: egyenként 88 sor (88 futam, 0 üres payload)
   - `dwh.dim_race.openf1_session_key`: mind a 93 futamhoz (2023–2026) kitöltve; `dwh.dim_circuit.openf1_circuit_key`: 26 pályához kitöltve
+- A `job_transform_dims` és a `job_transform_facts` lefutott: az összes dimenzió (`dim_driver`, `dim_franchise`, `dim_constructor`, `dim_constructor_alias`, `dim_circuit`, `dim_season`, `dim_race`, `dim_weather`) és az összes ténytábla (`fact_qualifying`, `fact_race_results`, `fact_pit_stops`, `fact_lap_times`) feltöltve.
 - Az `etl.run_log` még nincs használatban az ETL jobokban.
-- Még nincs betöltve a stagingbe: a bajnoki állások (`driverstandings`, `constructorstandings`).
-- A dimenziók betöltve a stagingből (`db/transform/`: `dim_season.sql`, `dim_circuit.sql`, `dim_race.sql`, `dim_driver.sql`, `dim_constructor.sql`, `dim_openf1_session.sql`). Idempotensek (`ON CONFLICT` / `IS DISTINCT FROM`), a staging append-only, ezért mindig a legutolsó sort (`stg_id DESC`) veszik. Még üresek: `dim_franchise`, `dim_constructor_alias`, `dim_weather` és a ténytáblák.
 - A Power BI riport még nem készült el.
 
 ### Következő lépések
-1. A dimenziókból hátra van: `dim_weather` feltöltése (`stg.openf1_weather`-ből), `dim_franchise`/`dim_constructor_alias` feltöltése, valamint a `dim_season` bajnok oszlopai (a bajnoki állásokból vagy a CSV dumpból).
-2. A bajnoki állások betöltése (`driverstandings`, `constructorstandings`; API-ról vagy a CSV dumpból).
-3. A ténytáblák (`fact_race_results`, `fact_qualifying`, `fact_lap_times`, `fact_pit_stops`) SQL transzformációinak elkészítése és futtatása a már feltöltött `stg.jolpica_*` és `stg.openf1_*` táblákból.
-4. `etl.run_log` használata, Job B (`SEASON`/`ROUND` paraméterekkel, csúszóablakos eredmény-újratöltés), ütemezés (Kitchen).
-5. Power BI riport.
+1. Power BI riport elkészítése a feltöltött `dwh` csillagséma alapján (DAX mérőszámok, elemzési fókuszok).
+2. Opcionális finomítások: `etl.run_log` használata, csúszóablakos eredmény-újratöltés (Job B), ütemezés (Kitchen).

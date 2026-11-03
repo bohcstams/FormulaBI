@@ -44,3 +44,18 @@ Elkészült és lefutott az OpenF1 adatok betöltése is (`etl/job_load_openf1.k
  - `db/transform/dim_openf1_session.sql`: összekapcsolja az OpenF1 futamokat a `dwh.dim_race` táblával (`openf1_session_key`, legfeljebb 1 napos UTC vs. helyi dátumeltérés megengedésével a szombat esti Las Vegas-i futamok miatt, így mind a 93 futam összekapcsolódott 2023–2026 között), valamint feltölti a `dwh.dim_circuit.openf1_circuit_key` oszlopot (26 pálya).
  - `etl/tr_list_openf1_sessions.ktr` és `etl/tr_load_openf1_endpoint.ktr`: a már lezajlott futamokra (`race_date < current_date` és `openf1_session_key IS NOT NULL`) végpontonként (`weather`, `race_control`, `stints`, `drivers`) letölti a még hiányzó session-ök adatait az `stg.openf1_*` táblákba. Mind a négy táblába 88–88 nem üres JSONB sor került be (2023: 22, 2024: 24, 2025: 24, 2026: 18 futam).
 
+## 2026. november 3.
+
+Befejeztem a még hiányzó staging táblák (`stg.jolpica_driver_standings`, `stg.jolpica_constructor_standings`) feltöltését. Mivel a Jolpica API végpontok neve (`driverstandings`, `constructorstandings`) nem tartalmaz aláhúzásjelet, a staging táblák neve viszont igen, a `tr_list_seasons` és a `tr_load_endpoint_season` transzformációkat kiegészítettem egy `TARGET_TABLE` paraméterrel, a `tr_list_seasons`-ben pedig egy `Select values` lépéssel `#` formátummaszkot állítottam be a `season` mezőre. A `job_load_season_dims` jobot kibővítettem a két új végponttal; a futtatás után mindkét táblába bekerült a 31-31 szezon (1996–2026) végeredménye.
+
+Elkészítettem a még hiányzó dimenzió-transzformációkat és az összes dimenziót betöltő `etl/job_transform_dims.kjb` Pentaho jobot:
+ - `db/transform/dim_weather.sql`: az `stg.openf1_weather` JSON mintáiból futamonkénti átlagos pálya- és levegőhőmérsékletet, páratartalmat, valamint esős futam (`is_wet`) jelzőt számol a `dwh.dim_weather` táblába.
+ - `db/transform/dim_season.sql`: kiegészítettem a lezárt szezonok egyéni és konstruktőri világbajnokainak (`champion_driver_key`, `champion_constructor_key`) frissítésével a bajnoki állások staging tábláiból.
+ - `db/transform/dim_franchise.sql`: feltölti a csapatok jogfolytonosságát összefogó `dwh.dim_franchise` táblát (pl. Alpine / Renault, Aston Martin, Mercedes, Red Bull Racing, Racing Bulls, Sauber / Audi), beállítja a `dwh.dim_constructor.franchise_key` kulcsokat, és sziget-algoritmussal (`ROW_NUMBER`) előállítja a `dwh.dim_constructor_alias` időszakait és a szponzorneveket.
+
+Végül elkészítettem a négy ténytábla SQL transzformációit és az ezeket futtató `etl/job_transform_facts.kjb` jobot:
+ - Az időtartamok (`SS.mmm`, `M:SS.mmm`, `H:MM:SS.mmm`) másodpercre váltásához létrehoztam az `etl.parse_duration_sec` függvényt (`db/init/02_dump_schema.sql`).
+ - `db/transform/fact_qualifying.sql`: az időmérő edzések eredményeit és a Q1/Q2/Q3 időket tölti a `dwh.fact_qualifying` táblába.
+ - `db/transform/fact_race_results.sql`: a futameredményeket tölti a `dwh.fact_race_results` táblába, összekapcsolva az esős futam jelzővel (`dim_weather`) és a Safety Car fázisok számával (`stg.openf1_race_control`), valamint kezeli az utólagos FIA-büntetések verziózását (`is_current`, `snapshot_date`).
+ - `db/transform/fact_pit_stops.sql` és `db/transform/fact_lap_times.sql`: a bokszkiállásokat és a köridőket tölti be (`dwh.fact_pit_stops`, `dwh.fact_lap_times`), a lapozott API sorok deduplikálásával és a 2023 utáni Safety Car körök megjelölésével. A JSON tömbök kibontásánál a vesszős felsorolást `CROSS JOIN LATERAL`-ra kellett cserélni, hogy a megelőző tábla-aliasok láthatóak maradjanak a `LEFT JOIN` feltételekben. A javítás után a teljes `job_transform_facts` job hibamentesen lefutott, így a `dwh` séma minden dimenzió- és ténytáblája feltöltődött.
+
