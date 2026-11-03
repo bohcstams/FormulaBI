@@ -134,3 +134,18 @@ LANGUAGE sql IMMUTABLE AS $$
                  mod(e, 60)                 AS s
           FROM (SELECT extract(epoch FROM d) AS e) x) y
 $$;
+
+CREATE OR REPLACE FUNCTION etl.parse_duration_sec(t TEXT) RETURNS NUMERIC(8, 3)
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE
+        WHEN t IS NULL OR t !~ '^[0-9]+(:[0-9]+)*(\.[0-9]+)?$' THEN NULL
+        WHEN strpos(t, ':') = 0 THEN t::numeric(8, 3)
+        WHEN array_length(string_to_array(t, ':'), 1) = 2 THEN
+            (split_part(t, ':', 1)::numeric * 60
+           + split_part(t, ':', 2)::numeric)::numeric(8, 3)
+        WHEN array_length(string_to_array(t, ':'), 1) = 3 THEN
+            (split_part(t, ':', 1)::numeric * 3600
+           + split_part(t, ':', 2)::numeric * 60
+           + split_part(t, ':', 3)::numeric)::numeric(8, 3)
+    END
+$$;
