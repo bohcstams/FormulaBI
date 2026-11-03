@@ -26,8 +26,8 @@ CREATE TABLE etl.data_coverage (
     note          TEXT
 );
 INSERT INTO etl.data_coverage (data_name, first_season, source, note) VALUES
-    ('results',        1950, 'jolpica', 'Results, calendar, drivers, constructors, circuits, standings. Backfill starts at 1996.'),
-    ('qualifying',     1995, 'jolpica', NULL),
+    ('results',        1950, 'jolpica', 'Results, calendar, drivers, constructors, circuits, standings (1950+; constructor standings from 1958).'),
+    ('qualifying',     1994, 'jolpica', NULL),
     ('lap_times',      1996, 'jolpica', NULL),
     ('pit_stops',      2011, 'jolpica', NULL),
     ('weather',        2023, 'openf1',  'is_wet_race, avg_track_temp are NULL before this season'),

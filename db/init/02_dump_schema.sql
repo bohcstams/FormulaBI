@@ -1,7 +1,7 @@
 -- Raw copies of the Jolpica CSV database dump (https://api.jolpi.ca/data/dumps/download/).
--- Only the files needed for the lap time and pit stop backfill are loaded. Every column is
--- TEXT, named after the CSV header; etl/tr_load_dump_csv.ktr truncates and reloads them.
--- The script is idempotent: etl/job_load_dump.kjb runs it before every load.
+-- All 13 CSV tables needed for a full 1950+ backfill of every Jolpica staging table are loaded.
+-- Every column is TEXT, named after the CSV header; etl/tr_load_dump_csv.ktr truncates and reloads
+-- them. The script is idempotent: etl/job_load_dump.kjb runs it before every load.
 CREATE TABLE IF NOT EXISTS stg.dump_season (
     id TEXT,
     api_id TEXT,
@@ -19,6 +19,19 @@ CREATE TABLE IF NOT EXISTS stg.dump_round (
     number TEXT,
     race_number TEXT,
     season_id TEXT,
+    wikipedia TEXT
+);
+CREATE TABLE IF NOT EXISTS stg.dump_circuit (
+    id TEXT,
+    altitude TEXT,
+    api_id TEXT,
+    country TEXT,
+    country_code TEXT,
+    latitude TEXT,
+    locality TEXT,
+    longitude TEXT,
+    name TEXT,
+    reference TEXT,
     wikipedia TEXT
 );
 CREATE TABLE IF NOT EXISTS stg.dump_session (
@@ -81,6 +94,49 @@ CREATE TABLE IF NOT EXISTS stg.dump_driver (
     reference TEXT,
     surname TEXT,
     wikipedia TEXT
+);
+CREATE TABLE IF NOT EXISTS stg.dump_team (
+    id TEXT,
+    api_id TEXT,
+    base_team_id TEXT,
+    country_code TEXT,
+    name TEXT,
+    nationality TEXT,
+    primary_color TEXT,
+    reference TEXT,
+    wikipedia TEXT
+);
+CREATE TABLE IF NOT EXISTS stg.dump_driverchampionship (
+    id TEXT,
+    adjustment_type TEXT,
+    driver_id TEXT,
+    highest_finish TEXT,
+    is_eligible TEXT,
+    points TEXT,
+    position TEXT,
+    round_id TEXT,
+    round_number TEXT,
+    season_id TEXT,
+    session_id TEXT,
+    session_number TEXT,
+    win_count TEXT,
+    year TEXT
+);
+CREATE TABLE IF NOT EXISTS stg.dump_teamchampionship (
+    id TEXT,
+    adjustment_type TEXT,
+    highest_finish TEXT,
+    is_eligible TEXT,
+    points TEXT,
+    position TEXT,
+    round_id TEXT,
+    round_number TEXT,
+    season_id TEXT,
+    session_id TEXT,
+    session_number TEXT,
+    team_id TEXT,
+    win_count TEXT,
+    year TEXT
 );
 CREATE TABLE IF NOT EXISTS stg.dump_lap (
     id TEXT,
