@@ -1,4 +1,4 @@
-# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
+﻿# Projekt: F1 BI Rendszer (Üzleti Intelligencia Házi Feladat)
 
 ## 1. Architektúra és Célok
 - **Cél:** Teljes életciklusú BI rendszer Formula–1 adatokkal, megajánlott jegy célkitűzéssel.
@@ -148,16 +148,17 @@ A futamhétvégék (naptár, pálya) adatait nem kellett újra betölteni, mert 
 - `job_transform_dims.kjb`: sorban lefuttatja a `dim_driver.sql`, `dim_constructor.sql`, `dim_franchise.sql` (`dim_franchise`, `dim_constructor.franchise_key` és `dim_constructor_alias` feltöltése sziget-algoritmussal, 1950-től kezdődő jogelőd- és karosszéria-motor-összevonásokkal, valamint szponzornevekkel), `dim_season.sql` (a lezárt szezonok egyéni és konstruktőri világbajnokainak beállításával), `dim_circuit.sql`, `dim_race.sql`, `dim_openf1_session.sql` és `dim_weather.sql` scripteket.
 - `job_transform_facts.kjb`: sorban lefuttatja a `fact_qualifying.sql`, `fact_race_results.sql` (SCD Type 2 verziózással az `is_current` és `snapshot_date` mezőkön, valamint az OpenF1 időjárás és Safety Car adatokkal), `fact_pit_stops.sql` (a csapatot a `fact_race_results` táblából hozzákapcsolva) és `fact_lap_times.sql` (a lapozott API sorok deduplikálásával, Safety Car körök és pályahőmérséklet jelölésével) scripteket. Az időtartam-szövegeket az `etl.parse_duration_sec` függvény alakítja másodpercekké (`NUMERIC(8, 3)`).
 
-**Fő vezérlő (orchestrator) jobok (`etl/job_weekly_update.kjb`, `etl/job_init_all.kjb`)**:
+**Fő vezérlő (orchestrator) jobok és ütemezés (`etl/job_weekly_update.kjb`, `etl/job_init_all.kjb`, `etl/run_weekly_update.bat`)**:
 - `job_weekly_update.kjb`: a rendszeresen (hetente keddenként) futó frissítő job. Sorrendje: `job_load_races` → `job_load_season_dims` → `job_transform_dims` → `job_load_round_data` → `job_load_laps` → `job_load_openf1` → `job_transform_dims` (az új időjárás- és világbajnok-adatok átvezetésére) → `job_transform_facts`.
+- `run_weekly_update.bat`: a `job_weekly_update.kjb` jobot a Pentaho `Kitchen.bat` segítségével parancssorból futtató script (ellenőrzi a PostgreSQL Docker konténer futását, és időbélyegzett naplófájlt ír az `etl/logs/` mappába). A rendszeres heti futtatás a Windows Task Scheduler segítségével ütemezett.
 - `job_init_all.kjb`: egy teljesen üres adatbázis egyszeri inicializáló jobja. Először lefuttatja a `job_load_dump` jobot (betöltve az 1950-től elérhető teljes Jolpica történetet a 14 napos késleltetésű CSV dumpból), majd meghívja a `job_weekly_update` jobot, amely pótolja az elmúlt 14 nap Jolpica adatait az API-ról, letölti a 2023 utáni OpenF1 adatokat, és feltölti az összes `dwh` dimenzió- és ténytáblát.
 
 ### Jelenlegi állapot (2026-11-04)
 - A docker konténer és a séma működik.
 - A teljes történeti (1950–2026) Jolpica CSV dump betöltés (`job_load_dump`), az API alapú növekményes és csúszóablakos betöltések (`job_load_races`, `job_load_season_dims`, `job_load_round_data`, `job_load_laps`, `job_load_openf1`), a DWH transzformációk (`job_transform_dims`, `job_transform_facts`), valamint a két fő vezérlő job (`job_init_all`, `job_weekly_update`) elkészült.
+- A heti frissítés (`run_weekly_update.bat`) a Windows Task Schedulerben ütemezve van és tesztelve hibamentesen lefutott.
 - A `dwh` csillagséma összes dimenzió- és ténytáblája 1950-től napjainkig (a 2026-os 18. fordulóig bezárólag) fel van töltve.
-- A Power BI riport és a heti automatikus ütemezés még nem készült el.
+- A Power BI riport még nem készült el.
 
 ### Következő lépések
-1. A `job_weekly_update.kjb` heti (keddenkénti) automatikus futtatásának beállítása (Kitchen + Windows Task Scheduler).
-2. Power BI riport elkészítése a feltöltött `dwh` csillagséma alapján (DAX mérőszámok, elemzési fókuszok).
+1. Power BI riport elkészítése a feltöltött `dwh` csillagséma alapján (DAX mérőszámok, elemzési fókuszok).

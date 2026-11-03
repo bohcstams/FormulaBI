@@ -67,3 +67,5 @@ Végül elkészítettem a két fő vezérlő (orchestrator) Pentaho jobot:
  - `etl/job_weekly_update.kjb`: a rendszeres heti (keddenkénti) frissítő job, amely frissíti az aktuális szezon naptárát, pilótáit, csapatait és bajnoki állásait (`tr_list_seasons.ktr`), letölti az új fordulók adatait és 21 napos csúszóablakban újratölti a legutóbbi futameredményeket az utólagos FIA-büntetések követéséhez (`tr_list_rounds.ktr`), letölti az OpenF1 adatokat, majd lefuttatja a dimenzió- és ténytábla-transzformációkat.
  - `etl/job_init_all.kjb`: egy üres adatbázis teljes inicializáló jobja, amely először lefuttatja a `job_load_dump` jobot (1950-től betöltve a teljes történeti állományt a CSV dumpból), majd meghívja a `job_weekly_update` jobot az elmúlt 14 nap API-adatainak és az OpenF1 adatoknak a pótlására, valamint a teljes `dwh` csillagséma felépítésére.
 
+A heti frissítő job parancssori indításához elkészült az `etl/run_weekly_update.bat` script (amely elindítja a PostgreSQL konténert, meghívja a Pentaho `Kitchen.bat`-ot, és az `etl/logs/` mappába naplóz), az automatikus heti futtatást pedig a Windows Task Schedulerben ütemeztem és teszteltem.
+
