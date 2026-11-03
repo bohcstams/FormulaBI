@@ -548,10 +548,20 @@
     <sql>SELECT r.season_year AS season, r.round
 FROM dwh.dim_race r
 WHERE r.season_year >= ${FIRST_SEASON}
-	AND r.race_date &lt; current_date
-	AND NOT EXISTS (
-		SELECT 1 FROM stg.jolpica_${ENDPOINT} s
-		WHERE s.season = r.season_year AND s.round = r.round)
+  AND r.race_date &lt; current_date
+  AND (NOT EXISTS (
+          SELECT 1 FROM stg.jolpica_${ENDPOINT} s
+          WHERE s.season = r.season_year AND s.round = r.round
+       )
+       OR ('${ENDPOINT}' = 'results'
+           AND r.race_date >= current_date - 21
+           AND NOT EXISTS (
+               SELECT 1 FROM stg.jolpica_results s
+               WHERE s.season = r.season_year
+                 AND s.round = r.round
+                 AND s.load_ts::date = current_date
+                 AND s.source_url NOT LIKE '%dump%'
+           )))
 ORDER BY 1, 2</sql>
     <limit>0</limit>
     <lookup/>
