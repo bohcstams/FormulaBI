@@ -14,6 +14,11 @@
         <default_value>races</default_value>
         <description/>
       </parameter>
+      <parameter>
+        <name>TARGET_TABLE</name>
+        <default_value>jolpica_races</default_value>
+        <description/>
+      </parameter>
     </parameters>
     <log>
       <trans-log-table>
@@ -499,6 +504,11 @@
   <order>
     <hop>
       <from>tr_list_seasons</from>
+      <to>Select values</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Select values</from>
       <to>Copy rows to result</to>
       <enabled>Y</enabled>
     </hop>
@@ -523,7 +533,7 @@
       </output>
     </remotesteps>
     <GUI>
-      <xloc>176</xloc>
+      <xloc>416</xloc>
       <yloc>224</yloc>
       <draw>Y</draw>
     </GUI>
@@ -542,7 +552,8 @@
     <connection>FormulaBIDatabase</connection>
     <sql>SELECT s AS season
 FROM generate_series(1996, EXTRACT(YEAR FROM CURRENT_DATE)::int) s
-WHERE s NOT IN (SELECT season FROM stg.jolpica_${ENDPOINT} WHERE season IS NOT NULL)</sql>
+WHERE s NOT IN (SELECT season FROM stg.${TARGET_TABLE} WHERE season IS NOT NULL)
+ORDER BY 1</sql>
     <limit>0</limit>
     <lookup/>
     <execute_each_row>N</execute_each_row>
@@ -584,6 +595,51 @@ WHERE s NOT IN (SELECT season FROM stg.jolpica_${ENDPOINT} WHERE season IS NOT N
     </remotesteps>
     <GUI>
       <xloc>64</xloc>
+      <yloc>224</yloc>
+      <draw>Y</draw>
+    </GUI>
+  </step>
+  <step>
+    <name>Select values</name>
+    <type>SelectValues</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <fields>
+      <select_unspecified>N</select_unspecified>
+      <meta>
+        <name>season</name>
+        <rename>season</rename>
+        <type>Integer</type>
+        <length>-2</length>
+        <precision>-2</precision>
+        <conversion_mask>#</conversion_mask>
+        <date_format_lenient>false</date_format_lenient>
+        <date_format_locale/>
+        <date_format_timezone/>
+        <lenient_string_to_number>false</lenient_string_to_number>
+        <encoding/>
+        <decimal_symbol/>
+        <grouping_symbol/>
+        <currency_symbol/>
+        <storage_type/>
+      </meta>
+    </fields>
+    <attributes/>
+    <cluster_schema/>
+    <remotesteps>
+      <input>
+      </input>
+      <output>
+      </output>
+    </remotesteps>
+    <GUI>
+      <xloc>224</xloc>
       <yloc>224</yloc>
       <draw>Y</draw>
     </GUI>

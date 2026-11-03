@@ -19,6 +19,11 @@
         <default_value>1996</default_value>
         <description/>
       </parameter>
+      <parameter>
+        <name>TARGET_TABLE</name>
+        <default_value>jolpica_drivers</default_value>
+        <description/>
+      </parameter>
     </parameters>
     <log>
       <trans-log-table>
@@ -666,7 +671,7 @@
       </field>
       <field>
         <name>target_table</name>
-        <variable>jolpica_${ENDPOINT}</variable>
+        <variable>${TARGET_TABLE}</variable>
         <type>String</type>
         <format/>
         <currency/>
