@@ -69,3 +69,10 @@ Végül elkészítettem a két fő vezérlő (orchestrator) Pentaho jobot:
 
 A heti frissítő job parancssori indításához elkészült az `etl/run_weekly_update.bat` script (amely elindítja a PostgreSQL konténert, meghívja a Pentaho `Kitchen.bat`-ot, és az `etl/logs/` mappába naplóz), az automatikus heti futtatást pedig a Windows Task Schedulerben ütemeztem és teszteltem.
 
+
+## 2026. november 7.
+
+A Power BI riport 5. oldalához (FIA steward audit) elkészült a `dwh.fact_result_changes` tábla (`db/init/01_schema.sql`, `db/transform/fact_result_changes.sql`), amely azokat a pilótákat listázza, akiknek a besorolása a leintés után megváltozott. Mivel a `fact_race_results` verziózása (`is_current`) csak az első betöltés utáni módosításokat látja, és a betöltött adatok már a végleges eredményeket tartalmazták, két forrás van (`change_source`):
+  - `versioned`: a jövőbeli módosítások: a `fact_race_results` első és aktuális verziójának eltérése (pozíció vagy pontszám).
+  - `lap_data`: a múltbeli futamok rekonstrukciója (1996-tól): a pályán mért sorrend (lefutott körök és az utolsó kör pozíciója, `fact_lap_times`) összevetve a hivatalos eredménnyel. Azokat a futamokat kihagyja, ahol valamelyik pilótához nincs köridő-adat, illetve ahol már van verziózott módosítás.
+A 2023 utáni futamoknál a `penalty_notes` oszlop az OpenF1 `race_control` üzeneteiből (`stg.openf1_race_control`) tölti a büntetések szövegét. A script a `job_transform_facts.kjb` utolsó lépéseként fut (teljes újraépítés, idempotens). Első futtatás: 754 sor, 143 futam (1996–2026).

@@ -372,7 +372,7 @@
       <parallel>N</parallel>
       <draw>Y</draw>
       <nr>0</nr>
-      <xloc>944</xloc>
+      <xloc>1136</xloc>
       <yloc>112</yloc>
       <attributes_kjc/>
     </entry>
@@ -448,6 +448,24 @@
       <yloc>112</yloc>
       <attributes_kjc/>
     </entry>
+    <entry>
+      <name>Load fact_result_changes (SQL)</name>
+      <description/>
+      <type>SQL</type>
+      <attributes/>
+      <sql/>
+      <useVariableSubstitution>F</useVariableSubstitution>
+      <sqlfromfile>T</sqlfromfile>
+      <sqlfilename>${Internal.Entry.Current.Directory}/../db/transform/fact_result_changes.sql</sqlfilename>
+      <sendOneStatement>T</sendOneStatement>
+      <connection>FormulaBIDatabase</connection>
+      <parallel>N</parallel>
+      <draw>Y</draw>
+      <nr>0</nr>
+      <xloc>960</xloc>
+      <yloc>112</yloc>
+      <attributes_kjc/>
+    </entry>
   </entries>
   <hops>
     <hop>
@@ -488,6 +506,15 @@
     </hop>
     <hop>
       <from>Load fact_lap_times (SQL)</from>
+      <to>Load fact_result_changes (SQL)</to>
+      <from_nr>0</from_nr>
+      <to_nr>0</to_nr>
+      <enabled>Y</enabled>
+      <evaluation>Y</evaluation>
+      <unconditional>Y</unconditional>
+    </hop>
+    <hop>
+      <from>Load fact_result_changes (SQL)</from>
       <to>Success</to>
       <from_nr>0</from_nr>
       <to_nr>0</to_nr>

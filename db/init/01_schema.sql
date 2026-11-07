@@ -207,6 +207,25 @@ CREATE TABLE dwh.fact_pit_stops (
     UNIQUE (race_key, driver_key, stop_number)
 );
 
+-- Drivers whose classification was changed after the chequered flag (steward decisions).
+-- 'lap_data': reconstructed from the last-lap order vs. the official result (history, lap data from 1996).
+-- 'versioned': taken from the first stored version of fact_race_results (changes seen after loading).
+CREATE TABLE dwh.fact_result_changes (
+    change_key       BIGSERIAL PRIMARY KEY,
+    race_key         INT NOT NULL REFERENCES dwh.dim_race (race_key),
+    driver_key       INT NOT NULL REFERENCES dwh.dim_driver (driver_key),
+    constructor_key  INT REFERENCES dwh.dim_constructor (constructor_key),
+    on_track_pos     INT,
+    official_pos     INT,
+    position_change  INT,
+    original_points  NUMERIC(5, 2),
+    official_points  NUMERIC(5, 2),
+    official_status  TEXT,
+    change_source    TEXT NOT NULL CHECK (change_source IN ('lap_data', 'versioned')),
+    penalty_notes    TEXT,
+    UNIQUE (race_key, driver_key)
+);
+
 CREATE INDEX ix_fact_laps_race       ON dwh.fact_lap_times (race_key);
 CREATE INDEX ix_fact_pits_race       ON dwh.fact_pit_stops (race_key);
 CREATE INDEX ix_fact_results_driver  ON dwh.fact_race_results (driver_key);
