@@ -1,4 +1,4 @@
-# Haladási dokumentáció
+﻿# Haladási dokumentáció
 
 ## 2026. október 8.
 
@@ -107,3 +107,11 @@ A steward audit tábla elkészítésekor kiderült, hogy a `fact_race_results` v
   - Felső KPI kártyák: `[Last Update]` (az utolsó adatfrissítés dátuma a `snapshot_date` alapján, tiszta `yyyy-MM-dd` formátummal), `[Latest Race Name]`, `[Latest Season]` (egész számként, ezres tagolás és kerekítés nélkül) és `[Latest Race Date]`. A bajnoki címek korai eldőlését jelző kártyákat megfontoltam, de a matematikai eldőlés szezon közbeni pontos számításának komplexitása (sprint futamok, leggyorsabb körök miatti bizonytalanság) miatt végül elvetettem.
   - Legfrissebb futam adatai: a futameredmények táblázata (`finish_pos`, `driver_name`, `constructor_name`, `grid_pos`, `points`, `status`) és az időmérő végeredménye (`fact_qualifying[position]`, pilóta, csapat, valamint a `[Q1 Time]`, `[Q2 Time]`, `[Q3 Time]` percekre és ezredmásodpercekre átváltó formázott DAX mért idők `M:SS.mmm` alakban). Mindkét táblázat `dim_race[Is Latest Race] = True` szűrővel van ellátva.
   - Aktuális bajnoki állások: az egyéni és konstruktőri pontverseny táblázatai az adott futamig bezárólag, amelyeket a `[Season Points to Date]` és `[Season Wins to Date]` DAX mérőszámok számolnak ki göngyölítve az aktuális szezonban (`dim_race[round] <= [Latest Round]`, `REMOVEFILTERS(dim_race)`). A DAX szintaxisban a mért értékeket változókba kellett menteni a filter argumentumban fellépő hiba elkerülésére.
+
+## 2026. november 10.
+
+Az 1. és az 5. oldal finomítása:
+  - Az 1. oldalon (Data Coverage & Overview) a köridő és a bokszkiállás rekordokat mutató KPI kártyákon is kikapcsoltam a `K`/`M` kerekítést (*Callout value → Display units: None*), így mind a négy kártya a pontos rekordszámot jeleníti meg.
+  - Az 5. oldalon az időjárás pilótákra gyakorolt hatásánál az átlagos pozíciónyereség (`Avg Positions Gained`) helyett az átlagos befutó helyezést (`[Avg Finish Position (Dry)]`, `[Avg Finish Position (Wet)]` és `[Wet Finish Advantage]`) vizsgálom. Az élmezőnyből rajtoló gyors pilóták a rajthelyük miatt csak minimális pozíciót tudnak előrelépni, ezért a pozíciónyereség torz képet adott a teljesítményükről; a befutó helyezés ezzel szemben a tényleges eredményt mutatja.
+  - A Safety Car fázisok száma (`safety_car_cnt`) szerinti kimutatásban a kiesési arány (`[DNF Rate %]`) helyett a kiesések számát (`[DNF Count]`) jelenítem meg, ami közvetlenebbül mutatja a pályán történt kiesések és a Safety Car beküldések kapcsolatát. A száraz és esős futamok összevetésénél megmaradt a `[DNF Rate %]` sávdiagram, mivel jól látszik rajta, hogy a modern F1-ben az eső önmagában alig változtat a kiesési arányon.
+  - Az 5. oldal kiegészült egy kördiagrammal, amely a 2023 utáni futamok (`safety_car_cnt` nem üres) megoszlását mutatja a Safety Car fázisok száma (0, 1, 2, 3 stb.) szerint (`DISTINCTCOUNT(fact_race_results[race_key])`).
